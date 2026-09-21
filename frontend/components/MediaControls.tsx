@@ -1,21 +1,33 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Mic, MicOff, Video, VideoOff, PhoneOff } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  PhoneOff,
+  ScreenShare,
+  ScreenShareOff,
+} from "lucide-react";
 
 export interface MediaControlsProps {
   isMicOn: boolean;
   isCameraOn: boolean;
+  isScreenSharing: boolean;
   onToggleMic: () => void;
   onToggleCamera: () => void;
+  onToggleScreenShare: () => void;
   onLeave: () => void;
 }
 
 export function MediaControls({
   isMicOn,
   isCameraOn,
+  isScreenSharing,
   onToggleMic,
   onToggleCamera,
+  onToggleScreenShare,
   onLeave,
 }: MediaControlsProps) {
   return (
@@ -32,11 +44,25 @@ export function MediaControls({
         label={isCameraOn ? "Turn camera off" : "Turn camera on"}
         active={isCameraOn}
         onClick={onToggleCamera}
+        disabled={isScreenSharing}
       >
         {isCameraOn ? (
           <Video className="h-5 w-5" />
         ) : (
           <VideoOff className="h-5 w-5" />
+        )}
+      </ControlButton>
+
+      <ControlButton
+        label={isScreenSharing ? "Stop sharing" : "Share screen"}
+        active={!isScreenSharing}
+        onClick={onToggleScreenShare}
+        highlight={isScreenSharing}
+      >
+        {isScreenSharing ? (
+          <ScreenShareOff className="h-5 w-5" />
+        ) : (
+          <ScreenShare className="h-5 w-5" />
         )}
       </ControlButton>
 
@@ -57,22 +83,29 @@ function ControlButton({
   active,
   onClick,
   children,
+  disabled = false,
+  highlight = false,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
   children: ReactNode;
+  disabled?: boolean;
+  highlight?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       aria-pressed={active}
-      className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
-        active
-          ? "bg-foreground/10 text-foreground hover:bg-foreground/20"
-          : "bg-red-600/90 text-white hover:bg-red-500"
+      className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        highlight
+          ? "bg-emerald-600 text-white hover:bg-emerald-500"
+          : active
+            ? "bg-foreground/10 text-foreground hover:bg-foreground/20"
+            : "bg-red-600/90 text-white hover:bg-red-500"
       }`}
     >
       {children}

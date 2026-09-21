@@ -4,22 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { SOCKET_EVENTS } from "@shared/socket-events";
 import type {
+  ExistingPeersPayload,
   ReceiveAnswerPayload,
   ReceiveIceCandidatePayload,
   ReceiveOfferPayload,
   RoomParticipant,
+  ScreenSharePayload,
   UserLeftPayload,
 } from "@shared/socket-events";
 
-// Public STUN servers for NAT traversal — no TURN relay (docs/stack-decision.md
-// §5, accepted risk for a single-night, small-group build; symmetric NATs may
-// fail to connect).
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun.cloudflare.com:3478" },
   ],
 };
+
+/** Sentinel for local user as presenter in UI state. */
+export const LOCAL_PRESENTER_ID = "local";
 
 export interface RemotePeer {
   socketId: string;
@@ -33,17 +35,16 @@ export interface UseWebRTCResult {
   mediaError: string | null;
   isMicOn: boolean;
   isCameraOn: boolean;
+  isScreenSharing: boolean;
+  /** `LOCAL_PRESENTER_ID`, a remote socketId, or null. */
+  presentingPeerId: string | null;
   toggleMic: () => void;
   toggleCamera: () => void;
-  /** Stops tracks, closes peer connections, disconnects signaling. Caller navigates home. */
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => Promise<void>;
   leave: () => void;
 }
 
-/**
- * Establishes a full-mesh WebRTC connection with every other peer in
- * `roomId`, signaling over Socket.io. See docs/sdd.md §2-§4 for the
- * architecture and negotiation flow this implements.
- */
 export function useWebRTC(
   roomId: string,
   displayName: string
@@ -53,27 +54,78 @@ export function useWebRTC(
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [presentingPeerId, setPresentingPeerId] = useState<string | null>(null);
 
-  // Session handles shared between the effect and leave()/toggles.
   const socketRef = useRef<Socket | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const isScreenSharingRef = useRef(false);
+
+  const buildPreviewStream = useCallback((videoTrack: MediaStreamTrack | null) => {
+    const audioTracks = cameraStreamRef.current?.getAudioTracks() ?? [];
+    const tracks: MediaStreamTrack[] = [...audioTracks];
+    if (videoTrack) tracks.unshift(videoTrack);
+    return tracks.length > 0 ? new MediaStream(tracks) : null;
+  }, []);
+
+  const replaceOutboundVideo = useCallback(async (track: MediaStreamTrack | null) => {
+    const replacements = Array.from(peerConnectionsRef.current.values()).map(
+      async (pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(track);
+        }
+      }
+    );
+    await Promise.all(replacements);
+  }, []);
+
+  const stopScreenShareInternal = useCallback(async () => {
+    const screenStream = screenStreamRef.current;
+    screenStreamRef.current = null;
+    isScreenSharingRef.current = false;
+    setIsScreenSharing(false);
+
+    screenStream?.getTracks().forEach((track) => track.stop());
+
+    const cameraVideo =
+      cameraStreamRef.current?.getVideoTracks().find(
+        (t) => t.readyState === "live"
+      ) ?? null;
+
+    await replaceOutboundVideo(cameraVideo);
+    setLocalStream(buildPreviewStream(cameraVideo));
+
+    socketRef.current?.emit(SOCKET_EVENTS.STOP_SCREEN_SHARE);
+    setPresentingPeerId((prev) =>
+      prev === LOCAL_PRESENTER_ID ? null : prev
+    );
+  }, [buildPreviewStream, replaceOutboundVideo]);
 
   const teardown = useCallback(() => {
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    isScreenSharingRef.current = false;
+
     socketRef.current?.disconnect();
     socketRef.current = null;
 
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
 
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+
     setLocalStream(null);
     setRemotePeers([]);
+    setIsScreenSharing(false);
+    setPresentingPeerId(null);
   }, []);
 
   const toggleMic = useCallback(() => {
-    const stream = localStreamRef.current;
+    const stream = cameraStreamRef.current;
     if (!stream) return;
     const track = stream.getAudioTracks()[0];
     if (!track) return;
@@ -82,13 +134,57 @@ export function useWebRTC(
   }, []);
 
   const toggleCamera = useCallback(() => {
-    const stream = localStreamRef.current;
+    if (isScreenSharingRef.current) return;
+    const stream = cameraStreamRef.current;
     if (!stream) return;
     const track = stream.getVideoTracks()[0];
     if (!track) return;
     track.enabled = !track.enabled;
     setIsCameraOn(track.enabled);
   }, []);
+
+  const startScreenShare = useCallback(async () => {
+    if (isScreenSharingRef.current) return;
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) {
+        screenStream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      screenStreamRef.current = screenStream;
+      isScreenSharingRef.current = true;
+      setIsScreenSharing(true);
+      setPresentingPeerId(LOCAL_PRESENTER_ID);
+
+      await replaceOutboundVideo(screenTrack);
+      setLocalStream(buildPreviewStream(screenTrack));
+
+      socketRef.current?.emit(SOCKET_EVENTS.START_SCREEN_SHARE);
+
+      screenTrack.onended = () => {
+        void stopScreenShareInternal();
+      };
+    } catch (err) {
+      // User cancelled the picker — not an error to surface loudly.
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        return;
+      }
+      console.error("[useWebRTC] screen share failed", err);
+      setMediaError(
+        err instanceof Error ? err.message : "Screen share failed."
+      );
+    }
+  }, [buildPreviewStream, replaceOutboundVideo, stopScreenShareInternal]);
+
+  const stopScreenShare = useCallback(async () => {
+    if (!isScreenSharingRef.current) return;
+    await stopScreenShareInternal();
+  }, [stopScreenShareInternal]);
 
   const leave = useCallback(() => {
     teardown();
@@ -126,6 +222,15 @@ export function useWebRTC(
 
     function removeRemotePeer(socketId: string) {
       setRemotePeers((prev) => prev.filter((p) => p.socketId !== socketId));
+      setPresentingPeerId((prev) => (prev === socketId ? null : prev));
+    }
+
+    function currentOutboundTracks(): MediaStreamTrack[] {
+      const audio = cameraStreamRef.current?.getAudioTracks() ?? [];
+      const screenVideo = screenStreamRef.current?.getVideoTracks()[0];
+      const cameraVideo = cameraStreamRef.current?.getVideoTracks()[0];
+      const video = screenVideo ?? cameraVideo;
+      return video ? [video, ...audio] : [...audio];
     }
 
     function getOrCreatePeerConnection(
@@ -137,8 +242,12 @@ export function useWebRTC(
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
 
-      localStreamRef.current?.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current as MediaStream);
+      currentOutboundTracks().forEach((track) => {
+        const stream =
+          screenStreamRef.current && track.kind === "video"
+            ? screenStreamRef.current
+            : cameraStreamRef.current;
+        if (stream) pc.addTrack(track, stream);
       });
 
       pc.onicecandidate = (event) => {
@@ -205,7 +314,7 @@ export function useWebRTC(
         return;
       }
 
-      localStreamRef.current = stream;
+      cameraStreamRef.current = stream;
       setLocalStream(stream);
       setIsMicOn(Boolean(stream?.getAudioTracks().some((t) => t.enabled)));
       setIsCameraOn(Boolean(stream?.getVideoTracks().some((t) => t.enabled)));
@@ -219,7 +328,7 @@ export function useWebRTC(
 
       socket.on(
         SOCKET_EVENTS.EXISTING_PEERS,
-        (peers: RoomParticipant[]) => {
+        ({ peers, presentingSocketId }: ExistingPeersPayload) => {
           peers.forEach((peer) => {
             displayNames.set(peer.socketId, peer.displayName);
             upsertRemotePeer({
@@ -227,6 +336,9 @@ export function useWebRTC(
               displayName: peer.displayName,
             });
           });
+          if (presentingSocketId) {
+            setPresentingPeerId(presentingSocketId);
+          }
         }
       );
 
@@ -302,6 +414,20 @@ export function useWebRTC(
       );
 
       socket.on(
+        SOCKET_EVENTS.START_SCREEN_SHARE,
+        ({ socketId }: ScreenSharePayload) => {
+          setPresentingPeerId(socketId);
+        }
+      );
+
+      socket.on(
+        SOCKET_EVENTS.STOP_SCREEN_SHARE,
+        ({ socketId }: ScreenSharePayload) => {
+          setPresentingPeerId((prev) => (prev === socketId ? null : prev));
+        }
+      );
+
+      socket.on(
         SOCKET_EVENTS.USER_LEFT,
         ({ socketId }: UserLeftPayload) => {
           const pc = peerConnections.get(socketId);
@@ -330,8 +456,12 @@ export function useWebRTC(
     mediaError,
     isMicOn,
     isCameraOn,
+    isScreenSharing,
+    presentingPeerId,
     toggleMic,
     toggleCamera,
+    startScreenShare,
+    stopScreenShare,
     leave,
   };
 }

@@ -9,6 +9,7 @@ export interface VideoTileProps {
   isLocal?: boolean;
   /** Explicit camera-off override (local toggle); still falls back to track state. */
   cameraOff?: boolean;
+  isPresenting?: boolean;
 }
 
 function initialsFromName(name: string): string {
@@ -30,6 +31,7 @@ export function VideoTile({
   muted = false,
   isLocal = false,
   cameraOff = false,
+  isPresenting = false,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const showVideo = !cameraOff && hasLiveVideo(stream);
@@ -43,13 +45,17 @@ export function VideoTile({
   const label = isLocal ? `${displayName} (you)` : displayName;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl bg-zinc-900 aspect-video">
+    <div
+      className={`relative w-full overflow-hidden rounded-xl bg-zinc-900 aspect-video ${
+        isPresenting ? "ring-2 ring-emerald-400/80" : ""
+      }`}
+    >
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        className={`absolute inset-0 h-full w-full object-cover ${
+        className={`absolute inset-0 h-full w-full object-contain bg-black ${
           showVideo ? "opacity-100" : "opacity-0"
         }`}
       />
@@ -60,8 +66,15 @@ export function VideoTile({
           </span>
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
-        <span className="text-xs font-medium text-white drop-shadow">{label}</span>
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+        <span className="text-xs font-medium text-white drop-shadow">
+          {label}
+        </span>
+        {isPresenting && (
+          <span className="rounded bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Sharing
+          </span>
+        )}
       </div>
     </div>
   );

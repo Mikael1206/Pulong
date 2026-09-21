@@ -45,11 +45,23 @@ export interface ReceiveIceCandidatePayload {
   candidate: RTCIceCandidateInit;
 }
 
+export interface ScreenSharePayload {
+  socketId: string;
+  displayName?: string;
+}
+
+export interface ExistingPeersPayload {
+  peers: RoomParticipant[];
+  presentingSocketId: string | null;
+}
+
 export declare const SOCKET_EVENTS: {
   readonly JOIN_ROOM: "join-room";
   readonly SEND_OFFER: "send-offer";
   readonly SEND_ANSWER: "send-answer";
   readonly SEND_ICE_CANDIDATE: "send-ice-candidate";
+  readonly START_SCREEN_SHARE: "start-screen-share";
+  readonly STOP_SCREEN_SHARE: "stop-screen-share";
   readonly EXISTING_PEERS: "existing-peers";
   readonly USER_JOINED: "user-joined";
   readonly USER_LEFT: "user-left";

@@ -1,6 +1,6 @@
 // Socket.io signaling server logic — kept separate from the Next.js frontend.
 // See docs/sdd.md §1-§4 for the architecture/data flow and docs/prd.md
-// F-001/F-002 for the features this serves.
+// F-001/F-002/F-004 for the features this serves.
 //
 // The server only ever relays opaque signaling payloads (SDP offers/answers,
 // ICE candidates) between two socket IDs — it never inspects or persists
@@ -11,11 +11,18 @@ const { Server } = require("socket.io");
 const { SOCKET_EVENTS } = require("../shared/socket-events");
 
 /**
- * In-memory room membership: Map<roomId, Map<socketId, { displayName }>>.
- * Never written to disk or a database (INV-003) — see docs/sdd.md §4.
- * @type {Map<string, Map<string, { displayName: string }>>}
+ * In-memory room membership:
+ * Map<roomId, Map<socketId, { displayName, isPresenting }>>
+ * @type {Map<string, Map<string, { displayName: string, isPresenting: boolean }>>}
  */
 const activeRooms = new Map();
+
+function findPresentingSocketId(room) {
+  for (const [socketId, participant] of room.entries()) {
+    if (participant.isPresenting) return socketId;
+  }
+  return null;
+}
 
 /**
  * Attaches a Socket.io signaling server to an existing HTTP server.
@@ -40,18 +47,18 @@ function attachSignalingServer(httpServer) {
       }
       const room = activeRooms.get(roomId);
 
-      // Tell the joiner who's already here — the joiner does NOT initiate
-      // offers to these peers (see docs/sdd.md §3): each existing peer
-      // initiates its own offer once it hears USER_JOINED below.
-      const existingPeers = Array.from(room.entries()).map(
+      const peers = Array.from(room.entries()).map(
         ([socketId, participant]) => ({
           socketId,
           displayName: participant.displayName,
         })
       );
-      socket.emit(SOCKET_EVENTS.EXISTING_PEERS, existingPeers);
+      socket.emit(SOCKET_EVENTS.EXISTING_PEERS, {
+        peers,
+        presentingSocketId: findPresentingSocketId(room),
+      });
 
-      room.set(socket.id, { displayName });
+      room.set(socket.id, { displayName, isPresenting: false });
 
       socket.to(roomId).emit(SOCKET_EVENTS.USER_JOINED, {
         socketId: socket.id,
@@ -63,8 +70,6 @@ function attachSignalingServer(httpServer) {
       );
     });
 
-    // Signaling relay — payloads pass through opaque, server never inspects
-    // SDP or ICE candidate contents.
     socket.on(SOCKET_EVENTS.SEND_OFFER, ({ to, sdp }) => {
       io.to(to).emit(SOCKET_EVENTS.RECEIVE_OFFER, { from: socket.id, sdp });
     });
@@ -80,6 +85,36 @@ function attachSignalingServer(httpServer) {
       });
     });
 
+    socket.on(SOCKET_EVENTS.START_SCREEN_SHARE, () => {
+      const { roomId, displayName } = socket.data;
+      if (!roomId || !activeRooms.has(roomId)) return;
+      const room = activeRooms.get(roomId);
+
+      // Only one presenter at a time — clear any previous flag.
+      for (const participant of room.values()) {
+        participant.isPresenting = false;
+      }
+      const self = room.get(socket.id);
+      if (self) self.isPresenting = true;
+
+      socket.to(roomId).emit(SOCKET_EVENTS.START_SCREEN_SHARE, {
+        socketId: socket.id,
+        displayName,
+      });
+    });
+
+    socket.on(SOCKET_EVENTS.STOP_SCREEN_SHARE, () => {
+      const { roomId } = socket.data;
+      if (!roomId || !activeRooms.has(roomId)) return;
+      const room = activeRooms.get(roomId);
+      const self = room.get(socket.id);
+      if (self) self.isPresenting = false;
+
+      socket.to(roomId).emit(SOCKET_EVENTS.STOP_SCREEN_SHARE, {
+        socketId: socket.id,
+      });
+    });
+
     socket.on("disconnect", () => {
       console.log(`[socket.io] client disconnected: ${socket.id}`);
 
@@ -87,7 +122,15 @@ function attachSignalingServer(httpServer) {
       if (!roomId || !activeRooms.has(roomId)) return;
 
       const room = activeRooms.get(roomId);
+      const wasPresenting = room.get(socket.id)?.isPresenting;
       room.delete(socket.id);
+
+      if (wasPresenting) {
+        socket.to(roomId).emit(SOCKET_EVENTS.STOP_SCREEN_SHARE, {
+          socketId: socket.id,
+        });
+      }
+
       socket.to(roomId).emit(SOCKET_EVENTS.USER_LEFT, {
         socketId: socket.id,
       });

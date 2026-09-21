@@ -11,6 +11,8 @@ const SOCKET_EVENTS = Object.freeze({
   SEND_OFFER: "send-offer",
   SEND_ANSWER: "send-answer",
   SEND_ICE_CANDIDATE: "send-ice-candidate",
+  START_SCREEN_SHARE: "start-screen-share",
+  STOP_SCREEN_SHARE: "stop-screen-share",
 
   // Server -> Client
   EXISTING_PEERS: "existing-peers",
@@ -19,6 +21,7 @@ const SOCKET_EVENTS = Object.freeze({
   RECEIVE_OFFER: "receive-offer",
   RECEIVE_ANSWER: "receive-answer",
   RECEIVE_ICE_CANDIDATE: "receive-ice-candidate",
+  // START_SCREEN_SHARE / STOP_SCREEN_SHARE are also broadcast server -> client
 });
 
 module.exports = { SOCKET_EVENTS };

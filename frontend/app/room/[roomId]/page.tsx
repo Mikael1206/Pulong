@@ -64,14 +64,26 @@ function RoomStage({
     mediaError,
     isMicOn,
     isCameraOn,
+    isScreenSharing,
+    presentingPeerId,
     toggleMic,
     toggleCamera,
+    startScreenShare,
+    stopScreenShare,
     leave,
   } = useWebRTC(roomId, displayName);
 
   function handleLeave() {
     leave();
     router.push("/");
+  }
+
+  function handleToggleScreenShare() {
+    if (isScreenSharing) {
+      void stopScreenShare();
+    } else {
+      void startScreenShare();
+    }
   }
 
   return (
@@ -116,6 +128,8 @@ function RoomStage({
           localName={displayName}
           remotePeers={remotePeers}
           localCameraOn={isCameraOn}
+          isLocalScreenSharing={isScreenSharing}
+          presentingPeerId={presentingPeerId}
         />
         <p className="text-center text-xs text-foreground/50">
           {remotePeers.length} other participant
@@ -127,8 +141,10 @@ function RoomStage({
         <MediaControls
           isMicOn={isMicOn}
           isCameraOn={isCameraOn}
+          isScreenSharing={isScreenSharing}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
+          onToggleScreenShare={handleToggleScreenShare}
           onLeave={handleLeave}
         />
       </div>

@@ -1,14 +1,17 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { RemotePeer } from "@/hooks/useWebRTC";
+import { LOCAL_PRESENTER_ID } from "@/hooks/useWebRTC";
 import { VideoTile } from "@/components/VideoTile";
 
 interface VideoGridProps {
   localStream: MediaStream | null;
   localName: string;
   remotePeers: RemotePeer[];
-  /** Forces local tile re-render when camera is toggled via track.enabled. */
   localCameraOn?: boolean;
+  isLocalScreenSharing?: boolean;
+  presentingPeerId: string | null;
 }
 
 function gridClass(count: number): string {
@@ -24,26 +27,107 @@ export function VideoGrid({
   localName,
   remotePeers,
   localCameraOn = true,
+  isLocalScreenSharing = false,
+  presentingPeerId,
 }: VideoGridProps) {
-  const count = 1 + remotePeers.length;
+  const localTile = (
+    <VideoTile
+      key={`local-${localCameraOn ? "on" : "off"}-${isLocalScreenSharing ? "share" : "cam"}`}
+      stream={localStream}
+      displayName={localName}
+      muted
+      isLocal
+      cameraOff={!localCameraOn && !isLocalScreenSharing}
+      isPresenting={presentingPeerId === LOCAL_PRESENTER_ID}
+    />
+  );
 
-  return (
-    <div className={`grid w-full gap-3 ${gridClass(count)}`}>
+  const remoteTiles = remotePeers.map((peer) => (
+    <VideoTile
+      key={peer.socketId}
+      stream={peer.stream}
+      displayName={peer.displayName}
+      isPresenting={presentingPeerId === peer.socketId}
+    />
+  ));
+
+  if (!presentingPeerId) {
+    const count = 1 + remotePeers.length;
+    return (
+      <div className={`grid w-full gap-3 ${gridClass(count)}`}>
+        {localTile}
+        {remoteTiles}
+      </div>
+    );
+  }
+
+  // Presenter stage: large focal tile + filmstrip of everyone else.
+  let stage: ReactNode = null;
+  const filmstrip: ReactNode[] = [];
+
+  if (presentingPeerId === LOCAL_PRESENTER_ID) {
+    stage = (
       <VideoTile
-        key={`local-${localCameraOn ? "on" : "off"}`}
+        key="stage-local"
         stream={localStream}
         displayName={localName}
         muted
         isLocal
-        cameraOff={!localCameraOn}
+        isPresenting
       />
-      {remotePeers.map((peer) => (
+    );
+    remotePeers.forEach((peer) => {
+      filmstrip.push(
         <VideoTile
-          key={peer.socketId}
+          key={`strip-${peer.socketId}`}
           stream={peer.stream}
           displayName={peer.displayName}
         />
-      ))}
+      );
+    });
+  } else {
+    const presenter = remotePeers.find((p) => p.socketId === presentingPeerId);
+    if (presenter) {
+      stage = (
+        <VideoTile
+          key={`stage-${presenter.socketId}`}
+          stream={presenter.stream}
+          displayName={presenter.displayName}
+          isPresenting
+        />
+      );
+    }
+    filmstrip.push(
+      <VideoTile
+        key="strip-local"
+        stream={localStream}
+        displayName={localName}
+        muted
+        isLocal
+        cameraOff={!localCameraOn && !isLocalScreenSharing}
+      />
+    );
+    remotePeers
+      .filter((p) => p.socketId !== presentingPeerId)
+      .forEach((peer) => {
+        filmstrip.push(
+          <VideoTile
+            key={`strip-${peer.socketId}`}
+            stream={peer.stream}
+            displayName={peer.displayName}
+          />
+        );
+      });
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <div className="w-full max-w-5xl mx-auto">{stage}</div>
+      {filmstrip.length > 0 && (
+        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {filmstrip}
+        </div>
+      )}
     </div>
   );
 }
