@@ -18,6 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Build-time config file; require() is intentional here (loaded by
+      // PostCSS/Tailwind's Node runtime, not bundled by Next).
+      "tailwind.config.js",
     ],
   },
 ];

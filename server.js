@@ -1,20 +1,23 @@
-// Custom Node.js server that boots Next.js and a Socket.io signaling server
-// on the SAME HTTP server/port. See docs/sdd.md §1-§2 for the architecture this
-// implements, and docs/prd.md F-001/F-002 for the features it serves.
+// Root entrypoint: boots the Next.js frontend (frontend/) and the Socket.io
+// signaling backend (backend/) on the SAME HTTP server/port. See
+// docs/sdd.md §1-§2 for the architecture this implements, and docs/prd.md
+// F-001/F-002 for the features it serves.
 //
-// Room/peer signaling logic (join-room, offer/answer/ICE relay, chat) is added
-// in TASK-003 onward — this task only wires up the shared HTTP server.
+// Kept as a single process/port on purpose (docs/stack-decision.md,
+// docs/decision-ledger.md ADR-001) — fewer moving parts to fail on a live
+// demo, zero extra infra to deploy for a $0, 1-night build.
 
+const path = require("path");
 const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
-const { Server } = require("socket.io");
+const { attachSignalingServer } = require("./backend/signaling-server");
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
 
-const app = next({ dev, hostname, port });
+const app = next({ dev, dir: path.join(__dirname, "frontend"), hostname, port });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
@@ -23,18 +26,7 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl);
   });
 
-  const io = new Server(httpServer, {
-    path: "/socket.io",
-  });
-
-  io.on("connection", (socket) => {
-    // Placeholder connection log only — room/signaling events land in TASK-003.
-    console.log(`[socket.io] client connected: ${socket.id}`);
-
-    socket.on("disconnect", () => {
-      console.log(`[socket.io] client disconnected: ${socket.id}`);
-    });
-  });
+  attachSignalingServer(httpServer);
 
   httpServer
     .once("error", (err) => {
