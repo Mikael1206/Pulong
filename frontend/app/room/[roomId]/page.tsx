@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Video } from "lucide-react";
 import { getDisplayName } from "@/lib/display-name";
 import { useWebRTC } from "@/hooks/useWebRTC";
+import { VideoGrid } from "@/components/VideoGrid";
 
 export default function RoomPage() {
   const router = useRouter();
@@ -17,8 +18,6 @@ export default function RoomPage() {
   useEffect(() => {
     const storedName = getDisplayName();
     if (!storedName) {
-      // No display name in this session (e.g. the room URL was opened
-      // directly) — send them back to the lobby instead of crashing.
       router.replace("/");
       return;
     }
@@ -33,127 +32,82 @@ export default function RoomPage() {
   }
 
   if (!name) {
-    // Redirect is in-flight — render nothing rather than a flash of content.
     return null;
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 gap-6 text-center">
-      <h1 className="text-2xl font-semibold">
-        You&apos;re in room <span className="font-mono">{roomId}</span> as{" "}
-        {name}
-      </h1>
-      <p className="max-w-md text-sm text-foreground/70">
-        Screen sharing, mic/camera toggles, and chat land in the next build
-        steps. Local and remote camera feeds below are a plain wire-check —
-        the real grid UI is next.
-      </p>
-      <button
-        type="button"
-        onClick={handleCopyLink}
-        className="flex items-center gap-2 rounded-lg border border-foreground/20 px-4 py-2.5 text-sm font-medium hover:bg-foreground/5"
-      >
-        {copied ? (
-          <>
-            <Check className="w-4 h-4" />
-            Copied!
-          </>
-        ) : (
-          <>
-            <Copy className="w-4 h-4" />
-            Copy Link
-          </>
-        )}
-      </button>
-
-      <RoomVideoWireCheck roomId={roomId} displayName={name} />
-    </div>
+    <RoomStage
+      roomId={roomId}
+      displayName={name}
+      copied={copied}
+      onCopyLink={handleCopyLink}
+    />
   );
 }
 
-/**
- * TASK-003 wire-check only — proves the WebRTC mesh actually connects and
- * streams. The real responsive VideoTile grid + layout is TASK-004.
- */
-function RoomVideoWireCheck({
+function RoomStage({
   roomId,
   displayName,
+  copied,
+  onCopyLink,
 }: {
   roomId: string;
   displayName: string;
+  copied: boolean;
+  onCopyLink: () => void;
 }) {
   const { localStream, remotePeers, mediaError } = useWebRTC(
     roomId,
     displayName
   );
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
 
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-4">
-      {mediaError && (
-        <p className="text-sm text-red-500">
-          Camera/mic error: {mediaError}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-4 justify-center">
-        <VideoPreview
-          videoRef={localVideoRef}
-          label={`${displayName} (you)`}
-          muted
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex items-center justify-between gap-4 border-b border-foreground/10 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Video className="h-5 w-5 shrink-0" />
+          <div className="min-w-0 text-left">
+            <p className="truncate text-sm font-semibold">Pulong</p>
+            <p className="truncate font-mono text-xs text-foreground/60">
+              {roomId}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onCopyLink}
+          className="flex shrink-0 items-center gap-2 rounded-lg border border-foreground/20 px-3 py-1.5 text-sm font-medium hover:bg-foreground/5"
+        >
+          {copied ? (
+            <>
+              <Check className="h-4 w-4" />
+              Copied!
+            </>
+          ) : (
+            <>
+              <Copy className="h-4 w-4" />
+              Copy Link
+            </>
+          )}
+        </button>
+      </header>
+
+      <main className="flex flex-1 flex-col gap-3 p-4">
+        {mediaError && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            Camera/mic error: {mediaError}
+          </p>
+        )}
+        <VideoGrid
+          localStream={localStream}
+          localName={displayName}
+          remotePeers={remotePeers}
         />
-        {remotePeers.map((peer) => (
-          <RemoteVideoPreview key={peer.socketId} peer={peer} />
-        ))}
-      </div>
-      <p className="text-xs text-foreground/50">
-        {remotePeers.length} other participant
-        {remotePeers.length === 1 ? "" : "s"} in this room.
-      </p>
-    </div>
-  );
-}
-
-function RemoteVideoPreview({
-  peer,
-}: {
-  peer: { socketId: string; displayName: string; stream: MediaStream | null };
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = peer.stream;
-    }
-  }, [peer.stream]);
-
-  return <VideoPreview videoRef={videoRef} label={peer.displayName} />;
-}
-
-function VideoPreview({
-  videoRef,
-  label,
-  muted = false,
-}: {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  label: string;
-  muted?: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={muted}
-        className="w-64 h-48 rounded-lg bg-black object-cover"
-      />
-      <span className="text-xs text-foreground/70">{label}</span>
+        <p className="text-center text-xs text-foreground/50">
+          {remotePeers.length} other participant
+          {remotePeers.length === 1 ? "" : "s"}
+        </p>
+      </main>
     </div>
   );
 }
