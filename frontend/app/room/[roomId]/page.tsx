@@ -62,6 +62,7 @@ function RoomStage({
     localStream,
     remotePeers,
     mediaError,
+    screenShareError,
     isMicOn,
     isCameraOn,
     isScreenSharing,
@@ -121,6 +122,11 @@ function RoomStage({
         {mediaError && (
           <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             Camera/mic error: {mediaError}
+          </p>
+        )}
+        {screenShareError && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            Screen share: {screenShareError}
           </p>
         )}
         <VideoGrid

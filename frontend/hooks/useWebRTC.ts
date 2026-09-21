@@ -33,6 +33,7 @@ export interface UseWebRTCResult {
   localStream: MediaStream | null;
   remotePeers: RemotePeer[];
   mediaError: string | null;
+  screenShareError: string | null;
   isMicOn: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
@@ -52,6 +53,7 @@ export function useWebRTC(
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [screenShareError, setScreenShareError] = useState<string | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -145,16 +147,58 @@ export function useWebRTC(
 
   const startScreenShare = useCallback(async () => {
     if (isScreenSharingRef.current) return;
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getDisplayMedia !== "function"
+    ) {
+      setScreenShareError(
+        "Screen sharing is not available in this browser. Try Chrome or Edge, or update Firefox."
+      );
+      return;
+    }
+
+    // Call getDisplayMedia first (still in the user-gesture chain). Do not
+    // await anything else before this — Firefox drops the gesture otherwise.
+    let screenStream: MediaStream;
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+      // Minimal constraints — some Firefox/Linux setups reject `audio: false`
+      // with NotSupportedError ("Not supported").
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: false,
       });
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError" || name === "AbortError") {
+        return;
+      }
+      console.error("[useWebRTC] screen share failed", err);
+      if (name === "NotSupportedError") {
+        setScreenShareError(
+          "Screen sharing is not supported here (common on some Firefox/Linux setups). Try Google Chrome, or install/enable xdg-desktop-portal + PipeWire for Firefox."
+        );
+        return;
+      }
+      setScreenShareError(
+        err instanceof Error ? err.message : "Screen share failed."
+      );
+      return;
+    }
+
+    try {
+      setScreenShareError(null);
       const screenTrack = screenStream.getVideoTracks()[0];
       if (!screenTrack) {
         screenStream.getTracks().forEach((t) => t.stop());
+        setScreenShareError("No screen video track was returned.");
         return;
       }
+
+      screenStream.getAudioTracks().forEach((track) => {
+        track.stop();
+        screenStream.removeTrack(track);
+      });
 
       screenStreamRef.current = screenStream;
       isScreenSharingRef.current = true;
@@ -170,12 +214,9 @@ export function useWebRTC(
         void stopScreenShareInternal();
       };
     } catch (err) {
-      // User cancelled the picker — not an error to surface loudly.
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        return;
-      }
-      console.error("[useWebRTC] screen share failed", err);
-      setMediaError(
+      screenStream.getTracks().forEach((t) => t.stop());
+      console.error("[useWebRTC] screen share wiring failed", err);
+      setScreenShareError(
         err instanceof Error ? err.message : "Screen share failed."
       );
     }
@@ -454,6 +495,7 @@ export function useWebRTC(
     localStream,
     remotePeers,
     mediaError,
+    screenShareError,
     isMicOn,
     isCameraOn,
     isScreenSharing,
