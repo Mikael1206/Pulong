@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { SOCKET_EVENTS } from "@shared/socket-events";
 import type {
@@ -27,22 +27,22 @@ export interface RemotePeer {
   stream: MediaStream | null;
 }
 
-interface UseWebRTCResult {
+export interface UseWebRTCResult {
   localStream: MediaStream | null;
   remotePeers: RemotePeer[];
   mediaError: string | null;
+  isMicOn: boolean;
+  isCameraOn: boolean;
+  toggleMic: () => void;
+  toggleCamera: () => void;
+  /** Stops tracks, closes peer connections, disconnects signaling. Caller navigates home. */
+  leave: () => void;
 }
 
 /**
  * Establishes a full-mesh WebRTC connection with every other peer in
  * `roomId`, signaling over Socket.io. See docs/sdd.md §2-§4 for the
- * architecture and negotiation flow this implements, and
- * handoff/TASK-003.md for the spec this was built against.
- *
- * All mutable state below (peer connections, pending ICE candidate queue,
- * display names) is scoped to a single effect run — it's created in
- * `setup()` and torn down in the cleanup function, so plain closure
- * variables are used instead of refs (nothing needs to survive re-renders).
+ * architecture and negotiation flow this implements.
  */
 export function useWebRTC(
   roomId: string,
@@ -51,16 +51,54 @@ export function useWebRTC(
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+
+  // Session handles shared between the effect and leave()/toggles.
+  const socketRef = useRef<Socket | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+
+  const teardown = useCallback(() => {
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setLocalStream(null);
+    setRemotePeers([]);
+  }, []);
+
+  const toggleMic = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const track = stream.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setIsMicOn(track.enabled);
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setIsCameraOn(track.enabled);
+  }, []);
+
+  const leave = useCallback(() => {
+    teardown();
+  }, [teardown]);
 
   useEffect(() => {
     let cancelled = false;
 
-    let socket: Socket | null = null;
-    let localMediaStream: MediaStream | null = null;
-    const peerConnections = new Map<string, RTCPeerConnection>();
+    const peerConnections = peerConnectionsRef.current;
     const displayNames = new Map<string, string>();
-    // ICE candidates that arrive before setRemoteDescription has resolved
-    // must be buffered and flushed afterward (trickle-ICE race).
     const pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
 
     function upsertRemotePeer(
@@ -99,9 +137,8 @@ export function useWebRTC(
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
 
-      // Send our local tracks so the remote side has something to render.
-      localMediaStream?.getTracks().forEach((track) => {
-        pc.addTrack(track, localMediaStream as MediaStream);
+      localStreamRef.current?.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current as MediaStream);
       });
 
       pc.onicecandidate = (event) => {
@@ -163,22 +200,24 @@ export function useWebRTC(
 
     async function setup() {
       const stream = await acquireLocalMedia();
-      if (cancelled) return;
+      if (cancelled) {
+        stream?.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
-      localMediaStream = stream;
+      localStreamRef.current = stream;
       setLocalStream(stream);
+      setIsMicOn(Boolean(stream?.getAudioTracks().some((t) => t.enabled)));
+      setIsCameraOn(Boolean(stream?.getVideoTracks().some((t) => t.enabled)));
 
-      socket = io({ path: "/socket.io" });
-      const activeSocket = socket;
+      const socket = io({ path: "/socket.io" });
+      socketRef.current = socket;
 
-      activeSocket.on("connect", () => {
-        activeSocket.emit(SOCKET_EVENTS.JOIN_ROOM, { roomId, displayName });
+      socket.on("connect", () => {
+        socket.emit(SOCKET_EVENTS.JOIN_ROOM, { roomId, displayName });
       });
 
-      // We just joined — note who's already here. Per docs/sdd.md §3, we do
-      // NOT initiate offers to them; each existing peer initiates its own
-      // offer to us once it receives USER_JOINED below.
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.EXISTING_PEERS,
         (peers: RoomParticipant[]) => {
           peers.forEach((peer) => {
@@ -191,18 +230,17 @@ export function useWebRTC(
         }
       );
 
-      // A new peer joined after us — we initiate the offer to them.
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.USER_JOINED,
         async ({ socketId, displayName: peerName }: RoomParticipant) => {
           displayNames.set(socketId, peerName);
           upsertRemotePeer({ socketId, displayName: peerName });
 
-          const pc = getOrCreatePeerConnection(socketId, activeSocket);
+          const pc = getOrCreatePeerConnection(socketId, socket);
           try {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-            activeSocket.emit(SOCKET_EVENTS.SEND_OFFER, {
+            socket.emit(SOCKET_EVENTS.SEND_OFFER, {
               to: socketId,
               sdp: offer,
             });
@@ -212,16 +250,16 @@ export function useWebRTC(
         }
       );
 
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.RECEIVE_OFFER,
         async ({ from, sdp }: ReceiveOfferPayload) => {
-          const pc = getOrCreatePeerConnection(from, activeSocket);
+          const pc = getOrCreatePeerConnection(from, socket);
           try {
             await pc.setRemoteDescription(sdp);
             await flushPendingCandidates(from, pc);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            activeSocket.emit(SOCKET_EVENTS.SEND_ANSWER, {
+            socket.emit(SOCKET_EVENTS.SEND_ANSWER, {
               to: from,
               sdp: answer,
             });
@@ -231,7 +269,7 @@ export function useWebRTC(
         }
       );
 
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.RECEIVE_ANSWER,
         async ({ from, sdp }: ReceiveAnswerPayload) => {
           const pc = peerConnections.get(from);
@@ -245,12 +283,11 @@ export function useWebRTC(
         }
       );
 
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.RECEIVE_ICE_CANDIDATE,
         async ({ from, candidate }: ReceiveIceCandidatePayload) => {
           const pc = peerConnections.get(from);
           if (!pc || !pc.remoteDescription) {
-            // Remote description isn't set yet — buffer for later.
             const queue = pendingCandidates.get(from) ?? [];
             queue.push(candidate);
             pendingCandidates.set(from, queue);
@@ -264,7 +301,7 @@ export function useWebRTC(
         }
       );
 
-      activeSocket.on(
+      socket.on(
         SOCKET_EVENTS.USER_LEFT,
         ({ socketId }: UserLeftPayload) => {
           const pc = peerConnections.get(socketId);
@@ -281,16 +318,20 @@ export function useWebRTC(
 
     return () => {
       cancelled = true;
-
-      socket?.disconnect();
-      peerConnections.forEach((pc) => pc.close());
-      peerConnections.clear();
+      teardown();
       pendingCandidates.clear();
       displayNames.clear();
-
-      localMediaStream?.getTracks().forEach((track) => track.stop());
     };
-  }, [roomId, displayName]);
+  }, [roomId, displayName, teardown]);
 
-  return { localStream, remotePeers, mediaError };
+  return {
+    localStream,
+    remotePeers,
+    mediaError,
+    isMicOn,
+    isCameraOn,
+    toggleMic,
+    toggleCamera,
+    leave,
+  };
 }

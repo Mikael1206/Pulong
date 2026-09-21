@@ -6,6 +6,7 @@ import { Copy, Check, Video } from "lucide-react";
 import { getDisplayName } from "@/lib/display-name";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { VideoGrid } from "@/components/VideoGrid";
+import { MediaControls } from "@/components/MediaControls";
 
 export default function RoomPage() {
   const router = useRouter();
@@ -56,10 +57,22 @@ function RoomStage({
   copied: boolean;
   onCopyLink: () => void;
 }) {
-  const { localStream, remotePeers, mediaError } = useWebRTC(
-    roomId,
-    displayName
-  );
+  const router = useRouter();
+  const {
+    localStream,
+    remotePeers,
+    mediaError,
+    isMicOn,
+    isCameraOn,
+    toggleMic,
+    toggleCamera,
+    leave,
+  } = useWebRTC(roomId, displayName);
+
+  function handleLeave() {
+    leave();
+    router.push("/");
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -92,7 +105,7 @@ function RoomStage({
         </button>
       </header>
 
-      <main className="flex flex-1 flex-col gap-3 p-4">
+      <main className="flex flex-1 flex-col gap-3 p-4 pb-28">
         {mediaError && (
           <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             Camera/mic error: {mediaError}
@@ -102,12 +115,23 @@ function RoomStage({
           localStream={localStream}
           localName={displayName}
           remotePeers={remotePeers}
+          localCameraOn={isCameraOn}
         />
         <p className="text-center text-xs text-foreground/50">
           {remotePeers.length} other participant
           {remotePeers.length === 1 ? "" : "s"}
         </p>
       </main>
+
+      <div className="fixed inset-x-0 bottom-0 z-10 flex justify-center p-4">
+        <MediaControls
+          isMicOn={isMicOn}
+          isCameraOn={isCameraOn}
+          onToggleMic={toggleMic}
+          onToggleCamera={toggleCamera}
+          onLeave={handleLeave}
+        />
+      </div>
     </div>
   );
 }

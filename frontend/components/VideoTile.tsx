@@ -7,6 +7,8 @@ export interface VideoTileProps {
   displayName: string;
   muted?: boolean;
   isLocal?: boolean;
+  /** Explicit camera-off override (local toggle); still falls back to track state. */
+  cameraOff?: boolean;
 }
 
 function initialsFromName(name: string): string {
@@ -27,9 +29,10 @@ export function VideoTile({
   displayName,
   muted = false,
   isLocal = false,
+  cameraOff = false,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const showVideo = hasLiveVideo(stream);
+  const showVideo = !cameraOff && hasLiveVideo(stream);
 
   useEffect(() => {
     const el = videoRef.current;
