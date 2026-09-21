@@ -1,0 +1,44 @@
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# --- FMD-Advanced planning framework ---
+# This repo is public; keep the AI planning/spec pipeline private to this
+# machine only. None of this affects the running app — it's pre-build
+# scaffolding (seed -> work -> docs -> handoff) used to plan Pulong before
+# writing code. See AGENTS.md if you need to restore these on a private clone.
+AGENTS.md
+AGENT_ROUTING.md
+seed/
+work/
+docs/
+handoff/
