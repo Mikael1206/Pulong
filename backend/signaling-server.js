@@ -115,6 +115,26 @@ function attachSignalingServer(httpServer) {
       });
     });
 
+    // Chat is relayed only — never written to disk or a database (INV-003).
+    socket.on(SOCKET_EVENTS.CHAT_MESSAGE, ({ text }) => {
+      const { roomId, displayName } = socket.data;
+      if (!roomId || !activeRooms.has(roomId)) return;
+
+      const trimmed = typeof text === "string" ? text.trim() : "";
+      if (!trimmed) return;
+
+      const payload = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        senderId: socket.id,
+        senderName: displayName || "Guest Participant",
+        text: trimmed.slice(0, 2000),
+        timestamp: Date.now(),
+      };
+
+      // Include the sender so every client shares one message id.
+      io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, payload);
+    });
+
     socket.on("disconnect", () => {
       console.log(`[socket.io] client disconnected: ${socket.id}`);
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Copy, Check, Video } from "lucide-react";
 import { getDisplayName } from "@/lib/display-name";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { VideoGrid } from "@/components/VideoGrid";
 import { MediaControls } from "@/components/MediaControls";
+import { ChatDrawer } from "@/components/ChatDrawer";
 
 export default function RoomPage() {
   const router = useRouter();
@@ -58,6 +59,9 @@ function RoomStage({
   onCopyLink: () => void;
 }) {
   const router = useRouter();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const {
     localStream,
     remotePeers,
@@ -67,12 +71,32 @@ function RoomStage({
     isCameraOn,
     isScreenSharing,
     presentingPeerId,
+    localSocketId,
+    messages,
+    sendChatMessage,
     toggleMic,
     toggleCamera,
     startScreenShare,
     stopScreenShare,
     leave,
   } = useWebRTC(roomId, displayName);
+
+  // Unread badge: count messages from others while the drawer is closed.
+  const seenCountRef = useRef(0);
+  useEffect(() => {
+    if (chatOpen) {
+      seenCountRef.current = messages.length;
+      setUnreadCount(0);
+      return;
+    }
+
+    const newOnes = messages.slice(seenCountRef.current);
+    const fromOthers = newOnes.filter((m) => m.senderId !== localSocketId);
+    if (fromOthers.length > 0) {
+      setUnreadCount((prev) => prev + fromOthers.length);
+    }
+    seenCountRef.current = messages.length;
+  }, [messages, chatOpen, localSocketId]);
 
   function handleLeave() {
     leave();
@@ -118,7 +142,11 @@ function RoomStage({
         </button>
       </header>
 
-      <main className="flex flex-1 flex-col gap-3 p-4 pb-28">
+      <main
+        className={`flex flex-1 flex-col gap-3 p-4 pb-28 transition-[margin] ${
+          chatOpen ? "mr-0 sm:mr-96" : ""
+        }`}
+      >
         {mediaError && (
           <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             Camera/mic error: {mediaError}
@@ -143,14 +171,25 @@ function RoomStage({
         </p>
       </main>
 
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        messages={messages}
+        localSocketId={localSocketId}
+        onSend={sendChatMessage}
+      />
+
       <div className="fixed inset-x-0 bottom-0 z-10 flex justify-center p-4">
         <MediaControls
           isMicOn={isMicOn}
           isCameraOn={isCameraOn}
           isScreenSharing={isScreenSharing}
+          isChatOpen={chatOpen}
+          unreadCount={unreadCount}
           onToggleMic={toggleMic}
           onToggleCamera={toggleCamera}
           onToggleScreenShare={handleToggleScreenShare}
+          onToggleChat={() => setChatOpen((open) => !open)}
           onLeave={handleLeave}
         />
       </div>

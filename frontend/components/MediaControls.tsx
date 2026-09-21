@@ -9,15 +9,19 @@ import {
   PhoneOff,
   ScreenShare,
   ScreenShareOff,
+  MessageSquare,
 } from "lucide-react";
 
 export interface MediaControlsProps {
   isMicOn: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
+  isChatOpen: boolean;
+  unreadCount: number;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
+  onToggleChat: () => void;
   onLeave: () => void;
 }
 
@@ -25,9 +29,12 @@ export function MediaControls({
   isMicOn,
   isCameraOn,
   isScreenSharing,
+  isChatOpen,
+  unreadCount,
   onToggleMic,
   onToggleCamera,
   onToggleScreenShare,
+  onToggleChat,
   onLeave,
 }: MediaControlsProps) {
   return (
@@ -65,6 +72,22 @@ export function MediaControls({
           <ScreenShare className="h-5 w-5" />
         )}
       </ControlButton>
+
+      <div className="relative">
+        <ControlButton
+          label={isChatOpen ? "Close chat" : "Open chat"}
+          active={!isChatOpen}
+          onClick={onToggleChat}
+          highlight={isChatOpen}
+        >
+          <MessageSquare className="h-5 w-5" />
+        </ControlButton>
+        {unreadCount > 0 && !isChatOpen && (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </div>
 
       <button
         type="button"

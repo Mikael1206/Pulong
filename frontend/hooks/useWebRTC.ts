@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { SOCKET_EVENTS } from "@shared/socket-events";
 import type {
+  ChatMessage,
   ExistingPeersPayload,
   ReceiveAnswerPayload,
   ReceiveIceCandidatePayload,
@@ -12,6 +13,8 @@ import type {
   ScreenSharePayload,
   UserLeftPayload,
 } from "@shared/socket-events";
+
+export type { ChatMessage };
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -39,6 +42,9 @@ export interface UseWebRTCResult {
   isScreenSharing: boolean;
   /** `LOCAL_PRESENTER_ID`, a remote socketId, or null. */
   presentingPeerId: string | null;
+  localSocketId: string | null;
+  messages: ChatMessage[];
+  sendChatMessage: (text: string) => void;
   toggleMic: () => void;
   toggleCamera: () => void;
   startScreenShare: () => Promise<void>;
@@ -58,6 +64,8 @@ export function useWebRTC(
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [presentingPeerId, setPresentingPeerId] = useState<string | null>(null);
+  const [localSocketId, setLocalSocketId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -124,6 +132,8 @@ export function useWebRTC(
     setRemotePeers([]);
     setIsScreenSharing(false);
     setPresentingPeerId(null);
+    setLocalSocketId(null);
+    setMessages([]);
   }, []);
 
   const toggleMic = useCallback(() => {
@@ -230,6 +240,14 @@ export function useWebRTC(
   const leave = useCallback(() => {
     teardown();
   }, [teardown]);
+
+  const sendChatMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || !socketRef.current?.connected) return;
+    socketRef.current.emit(SOCKET_EVENTS.CHAT_MESSAGE, {
+      text: trimmed.slice(0, 2000),
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,6 +382,7 @@ export function useWebRTC(
       socketRef.current = socket;
 
       socket.on("connect", () => {
+        setLocalSocketId(socket.id ?? null);
         socket.emit(SOCKET_EVENTS.JOIN_ROOM, { roomId, displayName });
       });
 
@@ -479,6 +498,13 @@ export function useWebRTC(
           removeRemotePeer(socketId);
         }
       );
+
+      socket.on(SOCKET_EVENTS.CHAT_MESSAGE, (message: ChatMessage) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, message];
+        });
+      });
     }
 
     setup();
@@ -500,6 +526,9 @@ export function useWebRTC(
     isCameraOn,
     isScreenSharing,
     presentingPeerId,
+    localSocketId,
+    messages,
+    sendChatMessage,
     toggleMic,
     toggleCamera,
     startScreenShare,

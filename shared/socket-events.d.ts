@@ -55,6 +55,18 @@ export interface ExistingPeersPayload {
   presentingSocketId: string | null;
 }
 
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface SendChatPayload {
+  text: string;
+}
+
 export declare const SOCKET_EVENTS: {
   readonly JOIN_ROOM: "join-room";
   readonly SEND_OFFER: "send-offer";
@@ -62,6 +74,7 @@ export declare const SOCKET_EVENTS: {
   readonly SEND_ICE_CANDIDATE: "send-ice-candidate";
   readonly START_SCREEN_SHARE: "start-screen-share";
   readonly STOP_SCREEN_SHARE: "stop-screen-share";
+  readonly CHAT_MESSAGE: "chat-message";
   readonly EXISTING_PEERS: "existing-peers";
   readonly USER_JOINED: "user-joined";
   readonly USER_LEFT: "user-left";
