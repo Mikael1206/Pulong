@@ -42,27 +42,6 @@ npm start
 
 Same URL: [http://localhost:3000](http://localhost:3000).
 
-## How to use
-
-### Host a meeting
-
-1. Enter a display name on the lobby.
-2. Click **New Meeting**.
-3. Allow camera/microphone when the browser asks.
-4. Click **Copy Link** and send it to classmates (Messenger, Discord, email, etc.).
-
-### Join a meeting
-
-1. Open the shared link **or** go to the lobby, paste the link/code into **Join**, and enter your name.
-2. Do **not** click **New Meeting** again — that creates a *different* room.
-
-### In the call
-
-- **Mic / Camera** — mute or turn video off (initials show when camera is off).
-- **Share screen** — best on **Chrome / Chromium / Edge**. Some Firefox + Linux setups return “Not supported” unless screen-capture portals (PipeWire / xdg-desktop-portal) are working.
-- **Chat** — open the chat panel; a red badge appears for unread messages while it is closed.
-- **Leave** — red hang-up button returns to the lobby and releases camera/mic.
-
 ## Project layout
 
 ```
