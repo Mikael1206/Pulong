@@ -18,8 +18,11 @@ function gridClass(count: number): string {
   if (count <= 1) return "grid-cols-1 max-w-3xl mx-auto";
   if (count === 2) return "grid-cols-1 sm:grid-cols-2";
   if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
-  if (count <= 6) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
-  return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
+  if (count <= 9) return "grid-cols-2 sm:grid-cols-3";
+  if (count <= 16) return "grid-cols-3 sm:grid-cols-4";
+  if (count <= 36) return "grid-cols-4 sm:grid-cols-6";
+  // Webinar / block-class density (60–100+)
+  return "grid-cols-5 sm:grid-cols-8 lg:grid-cols-10";
 }
 
 export function VideoGrid({
@@ -124,7 +127,7 @@ export function VideoGrid({
     <div className="flex w-full flex-col gap-3">
       <div className="w-full max-w-5xl mx-auto">{stage}</div>
       {filmstrip.length > 0 && (
-        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid max-h-48 w-full grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
           {filmstrip}
         </div>
       )}

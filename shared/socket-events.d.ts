@@ -1,5 +1,4 @@
-// Type declarations for shared/socket-events.js — see that file and
-// docs/sdd.md §2-§4 for the full signaling data flow and payload shapes.
+// Type declarations for shared/socket-events.js
 
 export interface RoomParticipant {
   socketId: string;
@@ -15,36 +14,6 @@ export interface UserLeftPayload {
   socketId: string;
 }
 
-export interface OfferPayload {
-  to: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface AnswerPayload {
-  to: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface IceCandidatePayload {
-  to: string;
-  candidate: RTCIceCandidateInit;
-}
-
-export interface ReceiveOfferPayload {
-  from: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface ReceiveAnswerPayload {
-  from: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface ReceiveIceCandidatePayload {
-  from: string;
-  candidate: RTCIceCandidateInit;
-}
-
 export interface ScreenSharePayload {
   socketId: string;
   displayName?: string;
@@ -53,6 +22,16 @@ export interface ScreenSharePayload {
 export interface ExistingPeersPayload {
   peers: RoomParticipant[];
   presentingSocketId: string | null;
+  /** Existing mediasoup producers in the room (for late joiners). */
+  producers: ProducerInfo[];
+}
+
+export interface ProducerInfo {
+  producerId: string;
+  socketId: string;
+  displayName: string;
+  kind: "audio" | "video";
+  source: "camera" | "microphone" | "screen";
 }
 
 export interface ChatMessage {
@@ -69,18 +48,20 @@ export interface SendChatPayload {
 
 export declare const SOCKET_EVENTS: {
   readonly JOIN_ROOM: "join-room";
-  readonly SEND_OFFER: "send-offer";
-  readonly SEND_ANSWER: "send-answer";
-  readonly SEND_ICE_CANDIDATE: "send-ice-candidate";
-  readonly START_SCREEN_SHARE: "start-screen-share";
-  readonly STOP_SCREEN_SHARE: "stop-screen-share";
-  readonly CHAT_MESSAGE: "chat-message";
   readonly EXISTING_PEERS: "existing-peers";
   readonly USER_JOINED: "user-joined";
   readonly USER_LEFT: "user-left";
-  readonly RECEIVE_OFFER: "receive-offer";
-  readonly RECEIVE_ANSWER: "receive-answer";
-  readonly RECEIVE_ICE_CANDIDATE: "receive-ice-candidate";
+  readonly GET_ROUTER_RTP_CAPABILITIES: "get-router-rtp-capabilities";
+  readonly CREATE_WEBRTC_TRANSPORT: "create-webrtc-transport";
+  readonly CONNECT_WEBRTC_TRANSPORT: "connect-webrtc-transport";
+  readonly PRODUCE: "produce";
+  readonly CONSUME: "consume";
+  readonly RESUME_CONSUMER: "resume-consumer";
+  readonly NEW_PRODUCER: "new-producer";
+  readonly PRODUCER_CLOSED: "producer-closed";
+  readonly START_SCREEN_SHARE: "start-screen-share";
+  readonly STOP_SCREEN_SHARE: "stop-screen-share";
+  readonly CHAT_MESSAGE: "chat-message";
 };
 
 export type SocketEventName =

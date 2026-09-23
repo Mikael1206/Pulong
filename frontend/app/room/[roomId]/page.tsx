@@ -15,7 +15,9 @@ export default function RoomPage() {
   const roomId = params.roomId;
 
   const [name, setName] = useState<string | null>(null);
+  const [nameChecked, setNameChecked] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   useEffect(() => {
     const storedName = getDisplayName();
@@ -24,17 +26,29 @@ export default function RoomPage() {
       return;
     }
     setName(storedName);
+    setNameChecked(true);
   }, [router]);
 
   async function handleCopyLink() {
     const url = `${window.location.origin}/room/${roomId}`;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyError(null);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyError("Could not copy — select and copy the room link from the address bar.");
+    }
   }
 
-  if (!name) {
-    return null;
+  if (!nameChecked || !name) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background p-8 text-center">
+        <Video className="h-8 w-8 text-emerald-400" aria-hidden />
+        <p className="text-sm text-[var(--muted)]">Loading room…</p>
+      </div>
+    );
   }
 
   return (
@@ -42,6 +56,7 @@ export default function RoomPage() {
       roomId={roomId}
       displayName={name}
       copied={copied}
+      copyError={copyError}
       onCopyLink={handleCopyLink}
     />
   );
@@ -51,11 +66,13 @@ function RoomStage({
   roomId,
   displayName,
   copied,
+  copyError,
   onCopyLink,
 }: {
   roomId: string;
   displayName: string;
   copied: boolean;
+  copyError: string | null;
   onCopyLink: () => void;
 }) {
   const router = useRouter();
@@ -80,6 +97,8 @@ function RoomStage({
     stopScreenShare,
     leave,
   } = useWebRTC(roomId, displayName);
+
+  const connecting = !localStream && !mediaError;
 
   // Unread badge: count messages from others while the drawer is closed.
   const seenCountRef = useRef(0);
@@ -115,10 +134,10 @@ function RoomStage({
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex items-center justify-between gap-4 border-b border-foreground/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Video className="h-5 w-5 shrink-0" />
+          <Video className="h-5 w-5 shrink-0 text-emerald-400" aria-hidden />
           <div className="min-w-0 text-left">
             <p className="truncate text-sm font-semibold">Pulong</p>
-            <p className="truncate font-mono text-xs text-foreground/60">
+            <p className="truncate font-mono text-xs text-[var(--muted)]">
               {roomId}
             </p>
           </div>
@@ -126,16 +145,16 @@ function RoomStage({
         <button
           type="button"
           onClick={onCopyLink}
-          className="flex shrink-0 items-center gap-2 rounded-lg border border-foreground/20 px-3 py-1.5 text-sm font-medium hover:bg-foreground/5"
+          className="focus-ring flex shrink-0 items-center gap-2 rounded-lg border border-foreground/20 px-3 py-1.5 text-sm font-medium hover:bg-foreground/5"
         >
           {copied ? (
             <>
-              <Check className="h-4 w-4" />
+              <Check className="h-4 w-4" aria-hidden />
               Copied!
             </>
           ) : (
             <>
-              <Copy className="h-4 w-4" />
+              <Copy className="h-4 w-4" aria-hidden />
               Copy Link
             </>
           )}
@@ -147,14 +166,33 @@ function RoomStage({
           chatOpen ? "mr-0 sm:mr-96" : ""
         }`}
       >
+        {copyError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+          >
+            {copyError}
+          </p>
+        )}
         {mediaError && (
-          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <p
+            role="alert"
+            className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
+          >
             Camera/mic error: {mediaError}
           </p>
         )}
         {screenShareError && (
-          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+          <p
+            role="alert"
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+          >
             Screen share: {screenShareError}
+          </p>
+        )}
+        {connecting && (
+          <p className="rounded-lg border border-foreground/15 bg-foreground/5 px-3 py-2 text-sm text-[var(--muted)]">
+            Connecting to media…
           </p>
         )}
         <VideoGrid
@@ -165,7 +203,7 @@ function RoomStage({
           isLocalScreenSharing={isScreenSharing}
           presentingPeerId={presentingPeerId}
         />
-        <p className="text-center text-xs text-foreground/50">
+        <p className="text-center text-xs text-[var(--muted)]">
           {remotePeers.length} other participant
           {remotePeers.length === 1 ? "" : "s"}
         </p>

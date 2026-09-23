@@ -1,6 +1,5 @@
-// Display-name storage — see handoff/TASK-002.md. Backed by sessionStorage
-// only: ephemeral, cleared when the tab closes, no account/DB (INV-001,
-// INV-003).
+// Display name lives in sessionStorage only: ephemeral, cleared when the tab
+// closes — no account or DB (INV-001, INV-003).
 
 const STORAGE_KEY = "pulong:display-name";
 

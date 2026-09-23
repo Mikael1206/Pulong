@@ -40,6 +40,19 @@ export function VideoTile({
     const el = videoRef.current;
     if (!el) return;
     el.srcObject = stream;
+    if (!stream) return;
+
+    // SFU may add/remove tracks on the same MediaStream reference.
+    const refresh = () => {
+      el.srcObject = null;
+      el.srcObject = stream;
+    };
+    stream.addEventListener("addtrack", refresh);
+    stream.addEventListener("removetrack", refresh);
+    return () => {
+      stream.removeEventListener("addtrack", refresh);
+      stream.removeEventListener("removetrack", refresh);
+    };
   }, [stream]);
 
   const label = isLocal ? `${displayName} (you)` : displayName;
@@ -71,7 +84,7 @@ export function VideoTile({
           {label}
         </span>
         {isPresenting && (
-          <span className="rounded bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          <span className="rounded-lg bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
             Sharing
           </span>
         )}

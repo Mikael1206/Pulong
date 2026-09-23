@@ -13,10 +13,10 @@ and stay connected as long as you need.
 |---|---|
 | Instant rooms | One click to create; join by link or room code — no signup |
 | Unlimited duration | No 40/60-minute cutoff |
-| Video & audio | Peer-to-peer WebRTC (mesh), works in the browser |
+| Video & audio | WebRTC via self-hosted mediasoup SFU (target: classroom scale; host CPU/upload limited — see Known limits) |
 | Screen sharing | Share a window/tab/screen for slides and demos |
 | In-call chat | Ephemeral text chat with unread badge |
-| Privacy by design | Media stays peer-to-peer; signaling & chat are not saved to disk |
+| Ephemeral by default | Media is RTP-forwarded only (never written to disk); chat is not saved |
 
 ## Quick start
 
@@ -67,9 +67,9 @@ Same URL: [http://localhost:3000](http://localhost:3000).
 
 ```
 Pulong/
-├── server.js              # Single process: Next.js + Socket.io on one port
-├── frontend/              # Next.js App Router UI (lobby, room, WebRTC client)
-├── backend/               # Socket.io signaling (rooms, SDP/ICE relay, chat)
+├── server.js              # Single process: Next.js + Socket.io + mediasoup SFU
+├── frontend/              # Next.js App Router UI (lobby, room, mediasoup-client)
+├── backend/               # Socket.io signaling + mediasoup worker/router
 ├── shared/                # Event name contracts used by frontend + backend
 ├── package.json           # npm scripts: dev / build / start / lint
 └── LICENSE                # MIT
@@ -77,17 +77,22 @@ Pulong/
 
 ## How it works (short)
 
-1. **Signaling** (Socket.io on the same HTTP server as the UI) exchanges room membership,
-   WebRTC offers/answers, ICE candidates, screen-share signals, and chat text.
-2. **Media** (camera, mic, screen) travels **directly between browsers** via WebRTC.
-   Streams are not uploaded to or stored on the Pulong server.
-3. **NAT** uses free public STUN servers (Google / Cloudflare). There is **no TURN** relay
-   in this MVP — some strict networks may fail to connect.
+1. **Signaling** (Socket.io on the same HTTP server as the UI) handles room membership,
+   mediasoup transport/produce/consume control, screen-share presence, and chat text.
+2. **Media** (camera, mic, screen) goes browser → **mediasoup SFU** → browsers. The server
+   forwards RTP only — it does **not** record or write media to disk.
+3. **Capacity** targets **100+ participants** for block classes / webinar-style rooms
+   (`[assumption A-001b]` — not load-tested yet). Host upload and CPU are the bottleneck;
+   for large rooms prefer most cameras off with one presenter screen-sharing.
+4. **Ports:** mediasoup uses UDP/TCP **40000–49999** by default (`MEDIASOUP_MIN_PORT` /
+   `MEDIASOUP_MAX_PORT`). Set `MEDIASOUP_ANNOUNCED_IP` to your LAN/public IP when joining
+   from other devices.
 
 ## Known limits (MVP)
 
-- Recommended for about **2–8 participants** (full mesh; bandwidth grows with group size).
-- No cloud recording, waiting rooms, or large webinars.
+- Designed for **classroom / webinar scale (100+)** on a self-hosted SFU — real ceiling
+  depends on the host machine’s CPU and upstream bandwidth (`[assumption]` until load-tested).
+- No cloud recording or waiting rooms.
 - Screen share reliability varies by OS/browser (prefer Chromium for demos).
 - Chat and room membership are **ephemeral** — gone when you leave or the server restarts.
 

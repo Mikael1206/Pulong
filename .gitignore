@@ -42,3 +42,4 @@ seed/
 work/
 docs/
 handoff/
+.cursor/

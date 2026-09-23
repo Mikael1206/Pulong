@@ -1,29 +1,29 @@
-// Shared Socket.io event name constants — single source of truth for both
-// the frontend (imported via TS, typed by the adjacent socket-events.d.ts)
-// and the backend (required directly, plain CommonJS, zero build step).
-// See docs/sdd.md §2-§4 for the full signaling data flow and payload shapes,
-// and docs/decision-ledger.md ADR-002 for why this lives outside frontend/
-// and backend/ as a plain .js + .d.ts pair rather than a single .ts file.
+// Shared Socket.io event names — frontend (TS via .d.ts) + backend (require).
+// Media path uses mediasoup SFU (ADR-003); Socket.io is signaling + chat only.
 
 const SOCKET_EVENTS = Object.freeze({
-  // Client -> Server
+  // Room / presence
   JOIN_ROOM: "join-room",
-  SEND_OFFER: "send-offer",
-  SEND_ANSWER: "send-answer",
-  SEND_ICE_CANDIDATE: "send-ice-candidate",
-  START_SCREEN_SHARE: "start-screen-share",
-  STOP_SCREEN_SHARE: "stop-screen-share",
-  CHAT_MESSAGE: "chat-message",
-
-  // Server -> Client
   EXISTING_PEERS: "existing-peers",
   USER_JOINED: "user-joined",
   USER_LEFT: "user-left",
-  RECEIVE_OFFER: "receive-offer",
-  RECEIVE_ANSWER: "receive-answer",
-  RECEIVE_ICE_CANDIDATE: "receive-ice-candidate",
-  // START_SCREEN_SHARE / STOP_SCREEN_SHARE / CHAT_MESSAGE are also
-  // broadcast server -> client
+
+  // mediasoup SFU signaling
+  GET_ROUTER_RTP_CAPABILITIES: "get-router-rtp-capabilities",
+  CREATE_WEBRTC_TRANSPORT: "create-webrtc-transport",
+  CONNECT_WEBRTC_TRANSPORT: "connect-webrtc-transport",
+  PRODUCE: "produce",
+  CONSUME: "consume",
+  RESUME_CONSUMER: "resume-consumer",
+  NEW_PRODUCER: "new-producer",
+  PRODUCER_CLOSED: "producer-closed",
+
+  // Screen-share presence (UI stage); media is a video producer with appData.source=screen
+  START_SCREEN_SHARE: "start-screen-share",
+  STOP_SCREEN_SHARE: "stop-screen-share",
+
+  // Chat (ephemeral relay only — INV-003)
+  CHAT_MESSAGE: "chat-message",
 });
 
 module.exports = { SOCKET_EVENTS };

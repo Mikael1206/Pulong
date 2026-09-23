@@ -38,7 +38,7 @@ export function MediaControls({
   onLeave,
 }: MediaControlsProps) {
   return (
-    <div className="flex items-center justify-center gap-3 rounded-2xl border border-foreground/10 bg-zinc-900/90 px-4 py-3 shadow-lg backdrop-blur">
+    <div className="flex items-center justify-center gap-3 rounded-xl border border-foreground/10 bg-zinc-900 px-4 py-3 shadow-md">
       <ControlButton
         label={isMicOn ? "Mute microphone" : "Unmute microphone"}
         active={isMicOn}
@@ -93,7 +93,7 @@ export function MediaControls({
         type="button"
         onClick={onLeave}
         aria-label="Leave meeting"
-        className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-500"
+        className="focus-ring flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-500"
       >
         <PhoneOff className="h-5 w-5" />
       </button>
@@ -123,7 +123,7 @@ function ControlButton({
       disabled={disabled}
       aria-label={label}
       aria-pressed={active}
-      className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`focus-ring flex h-12 w-12 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         highlight
           ? "bg-emerald-600 text-white hover:bg-emerald-500"
           : active
